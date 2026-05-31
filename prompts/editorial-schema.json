@@ -1,1 +1,41 @@
-
+{
+"headline": "string",
+"shortHeadline": "string",
+"summary": "string",
+"commentary": "string",
+"script": "string",
+"category": "world|india|technology|artificial-intelligence|business|finance|sports|science|politics|entertainment",
+"importance": "low|medium|high",
+"keywords": [
+"string"
+],
+"imageSearchTerms": [
+"string"
+],
+"imagePreference": "article|stock",
+"scene1": {
+"title": "Breaking News",
+"content": "string"
+},
+"scene2": {
+"title": "What Happened",
+"content": "string"
+},
+"scene3": {
+"title": "Key Details",
+"content": "string"
+},
+"scene4": {
+"title": "Why It Matters",
+"content": "string"
+},
+"scene5": {
+"title": "Your Take?",
+"content": "string"
+},
+"youtubeTitle": "string",
+"youtubeDescription": "string",
+"hashtags": [
+"#example"
+]
+}
