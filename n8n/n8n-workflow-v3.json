@@ -1,0 +1,266 @@
+{
+  "name": "Tamil News → YouTube Shorts v3 (Anti-Flag Edition)",
+  "nodes": [
+
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "minutes", "minutesInterval": 30 }] }
+      },
+      "id": "n01", "name": "⏰ Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1, "position": [160, 480]
+    },
+
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Random human-like delay: 0–18 minutes\n// Prevents bot-like clockwork posting pattern\nconst delayMs = Math.floor(Math.random() * 18 * 60 * 1000);\nawait new Promise(r => setTimeout(r, delayMs));\nreturn $input.all();"
+      },
+      "id": "n02", "name": "⏳ Random Delay (0–18 min)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [380, 480]
+    },
+
+    {
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=Tamil+Nadu+crime+OR+arrested+OR+missing+OR+murder+OR+accident+OR+fire+OR+flood&hl=en-IN&gl=IN&ceid=IN:en",
+        "options": {}
+      },
+      "id": "n03", "name": "📡 Google News RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1, "position": [600, 480]
+    },
+
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Keep only articles < 35 minutes old\nconst item = $input.item.json;\nconst pub = new Date(item.pubDate || item.isoDate || Date.now());\nif (Date.now() - pub.getTime() > 35 * 60 * 1000) return [];\n\nconst title = (item.title || '').replace(/ - [^-]+$/, '').trim();\nconst raw = item['content:encoded'] || item.content || item.summary || '';\nconst imgMatch = raw.match(/<img[^>]+src=[\"']([^\"']+)[\"']/i);\nconst imageUrl = (imgMatch && imgMatch[1]) || (item.enclosure && item.enclosure.url) || '';\nconst body = raw.replace(/<[^>]+>/g, '').replace(/\\s+/g, ' ').trim().slice(0, 900);\n\nreturn [{ json: { title, link: item.link || '', pubDate: pub.toISOString(), imageUrl, body } }];"
+      },
+      "id": "n04", "name": "🔧 Parse & Age Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [820, 480]
+    },
+
+    {
+      "parameters": {
+        "operation": "getAll",
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Posted", "mode": "name" },
+        "options": {}
+      },
+      "id": "n05", "name": "📋 Read Posted Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4, "position": [1040, 480],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "gsheets-creds", "name": "Google Sheets OAuth2" } }
+    },
+
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const link = $('🔧 Parse & Age Filter').item.json.link;\nconst dup = $input.all().some(r => r.json.link === link || r.json.url === link);\nif (dup) return [{ json: { skip: true } }];\nreturn [{ json: { skip: false, ...$('🔧 Parse & Age Filter').item.json } }];"
+      },
+      "id": "n06", "name": "🔍 Dedup Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [1260, 480]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.skip }}", "rightValue": false, "operator": { "type": "boolean", "operation": "equals" } }],
+          "combinator": "and"
+        }
+      },
+      "id": "n07", "name": "❓ Already Posted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2, "position": [1480, 480]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "YOUR_CLAUDE_API_KEY" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku-4-5-20251001\",\n  \"max_tokens\": 900,\n  \"messages\": [{\n    \"role\": \"user\",\n    \"content\": \"You are an original Tamil Nadu news commentator — NOT a summariser. Your output must feel like a real journalist wrote it, not an AI aggregating RSS.\\n\\nSOURCE ARTICLE\\nTitle: {{ $json.title }}\\nBody: {{ $json.body }}\\n\\nReturn ONLY valid JSON — no markdown, no explanation:\\n{\\n  \\\"headline\\\": \\\"ALL CAPS max 12 words, punchy, not a copy of title\\\",\\n  \\\"highlight_text\\\": \\\"1-2 sentences — name, age, location, exact accusation\\\",\\n  \\\"content\\\": \\\"2-3 sentences of ORIGINAL COMMENTARY. Do not copy source wording. Add local Tamil Nadu citizen perspective. What does this mean for the community?\\\",\\n  \\\"script\\\": \\\"60-80 word spoken anchor script. Start with a strong hook — not 'Today' or 'In a shocking'. Include ONE analysis sentence beyond facts. End with a thought-provoking question. Short punchy sentences. Written for speaking aloud.\\\",\\n  \\\"keywords\\\": [\\\"5-8 exact phrases that appear in the content field\\\"],\\n  \\\"source_tag\\\": \\\"District · Category e.g. Coimbatore · Crime\\\",\\n  \\\"theme\\\": \\\"crime|accident|politics|disaster|arrest\\\",\\n  \\\"variant\\\": 1,\\n  \\\"score\\\": 8,\\n  \\\"publish\\\": true\\n}\\n\\nRules:\\n- theme: pick from crime/accident/politics/disaster/arrest based on story\\n- variant: rotate 1/2/3 — DO NOT always return 1\\n- score: 1-10 newsworthiness (10=major breaking)\\n- publish: true ONLY if score >= 7 AND story is crime/accident/politics/disaster/arrest\\n- content and script must use NONE of the original article's sentences verbatim\"\n  }]\n}",
+        "options": {}
+      },
+      "id": "n08", "name": "🤖 Claude: Enrich + Script + Theme",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1, "position": [1700, 480]
+    },
+
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw = $input.item.json.content?.[0]?.text || '{}';\nlet ai;\ntry {\n  ai = JSON.parse(raw.replace(/```json?\\n?/g,'').replace(/```/g,'').trim());\n} catch(e) {\n  return [{ json: { skip: true, reason: 'parse_error' } }];\n}\n\nif (!ai.publish || ai.score < 7) {\n  return [{ json: { skip: true, reason: 'low_score', score: ai.score } }];\n}\n\n// Rotate variant if Claude always returns 1\nconst forcedVariant = ai.variant || Math.floor(Math.random() * 3) + 1;\n\nconst src = $('🔍 Dedup Check').item.json;\nreturn [{ json: {\n  skip:           false,\n  headline:       ai.headline        || src.title.toUpperCase(),\n  highlight_text: ai.highlight_text  || '',\n  content:        ai.content         || '',\n  script:         ai.script          || ai.content || '',\n  keywords:       (ai.keywords || []).join(','),\n  source_tag:     ai.source_tag      || 'Tamil Nadu · News',\n  theme:          ai.theme           || 'crime',\n  variant:        forcedVariant,\n  score:          ai.score,\n  caption:        '📍 ' + (ai.source_tag || 'Tamil Nadu'),\n  image_url:      src.imageUrl       || '',\n  article_link:   src.link,\n  pub_date:       src.pubDate\n} }];"
+      },
+      "id": "n09", "name": "📊 Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [1920, 480]
+    },
+
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [{ "leftValue": "={{ $json.skip }}", "rightValue": false, "operator": { "type": "boolean", "operation": "equals" } }],
+          "combinator": "and"
+        }
+      },
+      "id": "n10", "name": "❓ Worth Publishing?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2, "position": [2140, 480]
+    },
+
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\nconst params = new URLSearchParams({\n  headline:  d.headline       || '',\n  img:       d.image_url      || '',\n  caption:   d.caption        || '',\n  highlight: d.highlight_text || '',\n  content:   d.content        || '',\n  keywords:  d.keywords       || '',\n  source:    d.source_tag     || 'Tamil Nadu News',\n  channel:   'Tamil Shorts',\n  theme:     d.theme          || 'crime',\n  variant:   String(d.variant || 1)\n});\n// ← Replace with your Cloudflare Pages URL\nconst BASE = 'https://YOUR-PROJECT.pages.dev/card-template.html';\nreturn [{ json: { ...d, cardUrl: `${BASE}?${params.toString()}` } }];"
+      },
+      "id": "n11", "name": "🔗 Build Card URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [2360, 480]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://chrome.browserless.io/screenshot",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [{ "name": "token", "value": "YOUR_BROWSERLESS_TOKEN" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{ $json.cardUrl }}\",\n  \"options\": { \"type\": \"png\", \"fullPage\": false },\n  \"viewport\": { \"width\": 768, \"height\": 1376, \"deviceScaleFactor\": 1 },\n  \"waitForSelector\": \"body.ready\",\n  \"waitForTimeout\": 7000\n}",
+        "options": {
+          "response": { "response": { "responseFormat": "file", "outputPropertyName": "cardPng" } }
+        }
+      },
+      "id": "n12", "name": "📸 Browserless → PNG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1, "position": [2580, 480]
+    },
+
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Convert binary PNG to base64 for Railway service\nconst pngB64 = $binary.cardPng.data;\nreturn [{ json: {\n  ...$json,\n  pngBase64: pngB64\n} }];"
+      },
+      "id": "n13", "name": "🔄 PNG → Base64",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2, "position": [2800, 480]
+    },
+
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR-RAILWAY-APP.railway.app/convert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"pngBase64\": \"{{ $json.pngBase64 }}\",\n  \"script\":    \"{{ $json.script }}\",\n  \"theme\":     \"{{ $json.theme }}\",\n  \"duration\":  30,\n  \"lang\":      \"en\"\n}",
+        "options": {
+          "response": { "response": { "responseFormat": "file", "outputPropertyName": "videoFile" } }
+        }
+      },
+      "id": "n14", "name": "🎬 Railway: PNG + TTS → MP4",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1, "position": [3020, 480]
+    },
+
+    {
+      "parameters": {
+        "title": "={{ $('📊 Parse AI Response').item.json.headline }}",
+        "categoryId": "25",
+        "description": "={{ $('📊 Parse AI Response').item.json.content }}\\n\\n#TamilNadu #BreakingNews #Shorts #IndiaNews #TamilNews\\n\\nSource: {{ $('📊 Parse AI Response').item.json.article_link }}",
+        "options": {
+          "privacyStatus": "public",
+          "tags": "={{ [$('📊 Parse AI Response').item.json.keywords, 'Tamil Nadu', 'Breaking News', 'Shorts', 'India', $('📊 Parse AI Response').item.json.theme].join(',') }}",
+          "embeddable": true,
+          "publicStatsViewable": true
+        }
+      },
+      "id": "n15", "name": "▶️ Upload to YouTube Shorts",
+      "type": "n8n-nodes-base.youTube",
+      "typeVersion": 1, "position": [3240, 480],
+      "credentials": { "youTubeOAuth2Api": { "id": "youtube-creds", "name": "YouTube OAuth2" } }
+    },
+
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "YOUR_GOOGLE_SHEET_ID", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "Posted", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "link":        "={{ $('📊 Parse AI Response').item.json.article_link }}",
+            "url":         "={{ $('📊 Parse AI Response').item.json.article_link }}",
+            "headline":    "={{ $('📊 Parse AI Response').item.json.headline }}",
+            "theme":       "={{ $('📊 Parse AI Response').item.json.theme }}",
+            "variant":     "={{ $('📊 Parse AI Response').item.json.variant }}",
+            "score":       "={{ $('📊 Parse AI Response').item.json.score }}",
+            "youtube_url": "={{ $json.id ? 'https://youtube.com/shorts/' + $json.id : '' }}",
+            "posted_at":   "={{ new Date().toISOString() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "n16", "name": "📋 Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4, "position": [3460, 480],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "gsheets-creds", "name": "Google Sheets OAuth2" } }
+    },
+
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=✅ *New Short Live!*\n\n📰 {{ $('📊 Parse AI Response').item.json.headline }}\n🎨 Theme: {{ $('📊 Parse AI Response').item.json.theme }} · Layout: {{ $('📊 Parse AI Response').item.json.variant }}\n⭐ Score: {{ $('📊 Parse AI Response').item.json.score }}/10\n🔗 https://youtube.com/shorts/{{ $('▶️ Upload to YouTube Shorts').item.json.id }}\n📅 {{ new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'}) }}",
+        "additionalFields": { "parse_mode": "Markdown" }
+      },
+      "id": "n17", "name": "📱 Telegram Notify",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2, "position": [3680, 480],
+      "credentials": { "telegramApi": { "id": "telegram-creds", "name": "Telegram Bot" } }
+    }
+
+  ],
+
+  "connections": {
+    "⏰ Schedule Trigger":            { "main": [[{ "node": "⏳ Random Delay (0–18 min)",       "type": "main", "index": 0 }]] },
+    "⏳ Random Delay (0–18 min)":     { "main": [[{ "node": "📡 Google News RSS",               "type": "main", "index": 0 }]] },
+    "📡 Google News RSS":             { "main": [[{ "node": "🔧 Parse & Age Filter",            "type": "main", "index": 0 }]] },
+    "🔧 Parse & Age Filter":          { "main": [[{ "node": "📋 Read Posted Log",               "type": "main", "index": 0 }]] },
+    "📋 Read Posted Log":             { "main": [[{ "node": "🔍 Dedup Check",                   "type": "main", "index": 0 }]] },
+    "🔍 Dedup Check":                 { "main": [[{ "node": "❓ Already Posted?",               "type": "main", "index": 0 }]] },
+    "❓ Already Posted?":             { "main": [[{ "node": "🤖 Claude: Enrich + Script + Theme","type": "main", "index": 0 }], []] },
+    "🤖 Claude: Enrich + Script + Theme":{ "main": [[{ "node": "📊 Parse AI Response",          "type": "main", "index": 0 }]] },
+    "📊 Parse AI Response":           { "main": [[{ "node": "❓ Worth Publishing?",             "type": "main", "index": 0 }]] },
+    "❓ Worth Publishing?":           { "main": [[{ "node": "🔗 Build Card URL",               "type": "main", "index": 0 }], []] },
+    "🔗 Build Card URL":              { "main": [[{ "node": "📸 Browserless → PNG",            "type": "main", "index": 0 }]] },
+    "📸 Browserless → PNG":           { "main": [[{ "node": "🔄 PNG → Base64",                 "type": "main", "index": 0 }]] },
+    "🔄 PNG → Base64":                { "main": [[{ "node": "🎬 Railway: PNG + TTS → MP4",     "type": "main", "index": 0 }]] },
+    "🎬 Railway: PNG + TTS → MP4":    { "main": [[{ "node": "▶️ Upload to YouTube Shorts",     "type": "main", "index": 0 }]] },
+    "▶️ Upload to YouTube Shorts":    { "main": [[{ "node": "📋 Log to Google Sheets",         "type": "main", "index": 0 }]] },
+    "📋 Log to Google Sheets":        { "main": [[{ "node": "📱 Telegram Notify",              "type": "main", "index": 0 }]] }
+  },
+
+  "pinData": {},
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "tags": ["news","youtube-shorts","tamil","anti-flag","v3"],
+  "triggerCount": 1
+}
