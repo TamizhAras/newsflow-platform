@@ -6,13 +6,14 @@
 "script": "string",
 "category": "world|india|technology|artificial-intelligence|business|finance|sports|science|politics|entertainment",
 "importance": "low|medium|high",
+"newsworthinessScore": 0,
+"estimatedVideoDuration": 0,
 "keywords": [
 "string"
 ],
 "imageSearchTerms": [
 "string"
 ],
-"imagePreference": "article|stock",
 "scene1": {
 "title": "Breaking News",
 "content": "string"
