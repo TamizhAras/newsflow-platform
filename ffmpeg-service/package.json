@@ -1,0 +1,9 @@
+{
+  "name": "news-card-ffmpeg-service",
+  "version": "3.0.0",
+  "description": "PNG + Google TTS → YouTube-ready MP4",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "express": "^4.18.2" },
+  "engines": { "node": ">=18.0.0" }
+}
