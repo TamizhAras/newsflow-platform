@@ -1,0 +1,28 @@
+{
+"model": "gpt-4.1-mini",
+"temperature": 0.7,
+"article": {
+"title": "Sample headline",
+"body": "Sample article body"
+},
+"expectedResponse": {
+"headline": "",
+"summary": "",
+"commentary": "",
+"script": "",
+"category": "",
+"importance": "",
+"newsworthinessScore": 0,
+"estimatedVideoDuration": 0,
+"keywords": [],
+"imageSearchTerms": [],
+"scene1": {},
+"scene2": {},
+"scene3": {},
+"scene4": {},
+"scene5": {},
+"youtubeTitle": "",
+"youtubeDescription": "",
+"hashtags": []
+}
+}
